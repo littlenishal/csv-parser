@@ -161,7 +161,7 @@ function getReasonText(code) {
  */
 function parseCommandLineArgs() {
   const args = process.argv.slice(2);
-  let inputFile = 'list_accounts_to_close.csv';  // Default input filename
+  let inputFile = 'list_accounts_to_close_0514.csv';  // Updated default input filename
   let outputFile = 'accounts_with_split_reasons.csv';  // Default output filename
   
   // Simple argument parsing
@@ -195,7 +195,7 @@ CSV Reason Code Transformer
 Usage: node transform.js [options]
 
 Options:
-  -i, --input <file>    Input CSV file (default: list_accounts_to_close.csv)
+  -i, --input <file>    Input CSV file (default: list_accounts_to_close_0514.csv)
   -o, --output <file>   Output CSV file (default: accounts_with_split_reasons.csv)
   -h, --help            Display this help message
 
@@ -205,9 +205,30 @@ Example:
 }
 
 /**
- * Transforms the list_accounts_to_close.csv file by splitting the AA_REASON column
- * into individual columns (REASON_1, REASON_2, REASON_3, REASON_4)
- * and adding corresponding text columns (REASON_TEXT_1, REASON_TEXT_2, REASON_TEXT_3, REASON_TEXT_4)
+ * Extract reason codes from a string
+ * Works for both JSON arrays and comma-separated strings
+ */
+function extractReasonCodes(reasonString) {
+  if (!reasonString) return [];
+  
+  try {
+    // First try to parse as JSON array
+    if (reasonString.trim().startsWith('[')) {
+      return JSON.parse(reasonString);
+    }
+    
+    // If not JSON, treat as comma-separated string
+    return reasonString.split(',').map(code => code.trim());
+  } catch (e) {
+    console.error(`Error parsing reason string: ${reasonString}`);
+    console.error(e.message);
+    return [];
+  }
+}
+
+/**
+ * Transforms the list_accounts_to_close.csv file by splitting both the AA_REASON and FICO_REASON columns
+ * into individual columns and adding corresponding text columns
  */
 function transformCSV() {
   try {
@@ -245,40 +266,37 @@ function transformCSV() {
       console.warn(parsedData.errors);
     }
     
-    // Function to extract reason codes from the AA_REASON column
-    function extractReasonCodes(reasonString) {
-      if (!reasonString) return [];
-      
-      try {
-        // Parse the JSON array string
-        return JSON.parse(reasonString);
-      } catch (e) {
-        console.error(`Error parsing reason string: ${reasonString}`);
-        console.error(e.message);
-        return [];
-      }
-    }
-    
-    // Create the new dataset with the AA_REASON column split
+    // Create the new dataset with both FICO_REASON and AA_REASON columns split
     console.log(`Transforming data...`);
     const newData = parsedData.data.map((row, index) => {
       try {
-        // Create a new object with the original columns (excluding AA_REASON)
+        // Create a new object with the original columns (excluding the ones we're splitting)
         const newRow = {
           ECM_SEG: row.ECM_SEG,
           APPLICATION_ID: row.APPLICATION_ID,
           EXP_FICO: row.EXP_FICO,
-          EXPERIANREPORTDATE: row.EXPERIANREPORTDATE
+          EXPERIANREPORTDATE: row.EXPERIANREPORTDATE,
+          NET_BALANCE_AMOUNT: row.NET_BALANCE_AMOUNT // Added this column from the new CSV
         };
         
-        // Extract the reason codes
-        const reasonCodes = extractReasonCodes(row.AA_REASON);
+        // Extract AA reason codes
+        const aaReasonCodes = extractReasonCodes(row.AA_REASON);
         
-        // Add a column for each reason code and its corresponding text (up to 4, since that's the maximum we found)
+        // Add columns for each AA reason code and its corresponding text (up to 4)
         for (let i = 0; i < 4; i++) {
-          const reasonCode = reasonCodes[i] || "";
-          newRow[`REASON_${i+1}`] = reasonCode;
-          newRow[`REASON_TEXT_${i+1}`] = reasonCode ? getReasonText(reasonCode) : "";
+          const reasonCode = aaReasonCodes[i] || "";
+          newRow[`AA_REASON_${i+1}`] = reasonCode;
+          newRow[`AA_REASON_TEXT_${i+1}`] = reasonCode ? getReasonText(reasonCode) : "";
+        }
+        
+        // Extract FICO reason codes
+        const ficoReasonCodes = extractReasonCodes(row.FICO_REASON);
+        
+        // Add columns for each FICO reason code and its corresponding text (up to 4)
+        for (let i = 0; i < 4; i++) {
+          const reasonCode = ficoReasonCodes[i] || "";
+          newRow[`FICO_REASON_${i+1}`] = reasonCode;
+          newRow[`FICO_REASON_TEXT_${i+1}`] = reasonCode ? getReasonText(reasonCode) : "";
         }
         
         return newRow;
@@ -291,14 +309,25 @@ function transformCSV() {
           APPLICATION_ID: row.APPLICATION_ID || '',
           EXP_FICO: row.EXP_FICO || '',
           EXPERIANREPORTDATE: row.EXPERIANREPORTDATE || '',
-          REASON_1: '',
-          REASON_TEXT_1: '',
-          REASON_2: '',
-          REASON_TEXT_2: '',
-          REASON_3: '',
-          REASON_TEXT_3: '',
-          REASON_4: '',
-          REASON_TEXT_4: ''
+          NET_BALANCE_AMOUNT: row.NET_BALANCE_AMOUNT || '',
+          // AA reason columns
+          AA_REASON_1: '',
+          AA_REASON_TEXT_1: '',
+          AA_REASON_2: '',
+          AA_REASON_TEXT_2: '',
+          AA_REASON_3: '',
+          AA_REASON_TEXT_3: '',
+          AA_REASON_4: '',
+          AA_REASON_TEXT_4: '',
+          // FICO reason columns
+          FICO_REASON_1: '',
+          FICO_REASON_TEXT_1: '',
+          FICO_REASON_2: '',
+          FICO_REASON_TEXT_2: '',
+          FICO_REASON_3: '',
+          FICO_REASON_TEXT_3: '',
+          FICO_REASON_4: '',
+          FICO_REASON_TEXT_4: ''
         };
       }
     });
@@ -316,23 +345,42 @@ function transformCSV() {
     console.log(`Successfully wrote output file.`);
     
     // Count some statistics for verification
-    let rowsWithOneReason = 0;
-    let rowsWithMultipleReasons = 0;
+    let rowsWithOneAAReason = 0;
+    let rowsWithMultipleAAReasons = 0;
+    let rowsWithOneFICOReason = 0;
+    let rowsWithMultipleFICOReasons = 0;
     
     newData.forEach(row => {
-      if (row.REASON_1 && !row.REASON_2) {
-        rowsWithOneReason++;
-      } else if (row.REASON_1 && row.REASON_2) {
-        rowsWithMultipleReasons++;
+      // Count AA reasons
+      if (row.AA_REASON_1 && !row.AA_REASON_2) {
+        rowsWithOneAAReason++;
+      } else if (row.AA_REASON_1 && row.AA_REASON_2) {
+        rowsWithMultipleAAReasons++;
+      }
+      
+      // Count FICO reasons
+      if (row.FICO_REASON_1 && !row.FICO_REASON_2) {
+        rowsWithOneFICOReason++;
+      } else if (row.FICO_REASON_1 && row.FICO_REASON_2) {
+        rowsWithMultipleFICOReasons++;
       }
     });
     
-    // Get all unique reason codes
-    const allReasonCodes = new Set();
+    // Get all unique reason codes (both AA and FICO)
+    const allAAReasonCodes = new Set();
+    const allFICOReasonCodes = new Set();
+    
     newData.forEach(row => {
+      // Collect AA reason codes
       for (let i = 1; i <= 4; i++) {
-        const reason = row[`REASON_${i}`];
-        if (reason) allReasonCodes.add(reason);
+        const reason = row[`AA_REASON_${i}`];
+        if (reason) allAAReasonCodes.add(reason);
+      }
+      
+      // Collect FICO reason codes
+      for (let i = 1; i <= 4; i++) {
+        const reason = row[`FICO_REASON_${i}`];
+        if (reason) allFICOReasonCodes.add(reason);
       }
     });
     
@@ -341,9 +389,12 @@ function transformCSV() {
     console.log(`Input file: ${inputFile}`);
     console.log(`Output file: ${outputFile}`);
     console.log(`Total rows: ${newData.length}`);
-    console.log(`Rows with one reason: ${rowsWithOneReason}`);
-    console.log(`Rows with multiple reasons: ${rowsWithMultipleReasons}`);
-    console.log(`Unique reason codes: ${Array.from(allReasonCodes).sort().join(', ')}`);
+    console.log(`Rows with one AA reason: ${rowsWithOneAAReason}`);
+    console.log(`Rows with multiple AA reasons: ${rowsWithMultipleAAReasons}`);
+    console.log(`Rows with one FICO reason: ${rowsWithOneFICOReason}`);
+    console.log(`Rows with multiple FICO reasons: ${rowsWithMultipleFICOReasons}`);
+    console.log(`Unique AA reason codes: ${Array.from(allAAReasonCodes).sort().join(', ')}`);
+    console.log(`Unique FICO reason codes: ${Array.from(allFICOReasonCodes).sort().join(', ')}`);
     
     // Print a sample of the first 5 rows
     console.log("\n--- SAMPLE OUTPUT (First 5 rows) ---");
