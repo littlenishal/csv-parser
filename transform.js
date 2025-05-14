@@ -4,7 +4,6 @@ const path = require('path');
 const Papa = require('papaparse');
 
 // Import the decline codes mapping
-// First, let's include the mapping directly in this script to make it self-contained
 const ficoMapping = {
   1: 'Amount owed on accounts is too high',
   2: 'Level of delinquency on accounts',
@@ -157,15 +156,63 @@ function getReasonText(code) {
 }
 
 /**
+ * Parses command line arguments
+ * @returns {Object} Object containing input and output file paths
+ */
+function parseCommandLineArgs() {
+  const args = process.argv.slice(2);
+  let inputFile = 'list_accounts_to_close.csv';  // Default input filename
+  let outputFile = 'accounts_with_split_reasons.csv';  // Default output filename
+  
+  // Simple argument parsing
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-i' || args[i] === '--input') {
+      if (i + 1 < args.length) {
+        inputFile = args[i + 1];
+        i++; // Skip the next argument since we've used it
+      }
+    } else if (args[i] === '-o' || args[i] === '--output') {
+      if (i + 1 < args.length) {
+        outputFile = args[i + 1];
+        i++; // Skip the next argument since we've used it
+      }
+    } else if (args[i] === '-h' || args[i] === '--help') {
+      printUsage();
+      process.exit(0);
+    }
+  }
+  
+  return { inputFile, outputFile };
+}
+
+/**
+ * Prints usage information
+ */
+function printUsage() {
+  console.log(`
+CSV Reason Code Transformer
+
+Usage: node transform.js [options]
+
+Options:
+  -i, --input <file>    Input CSV file (default: list_accounts_to_close.csv)
+  -o, --output <file>   Output CSV file (default: accounts_with_split_reasons.csv)
+  -h, --help            Display this help message
+
+Example:
+  node transform.js -i my_input.csv -o my_output.csv
+  `);
+}
+
+/**
  * Transforms the list_accounts_to_close.csv file by splitting the AA_REASON column
  * into individual columns (REASON_1, REASON_2, REASON_3, REASON_4)
  * and adding corresponding text columns (REASON_TEXT_1, REASON_TEXT_2, REASON_TEXT_3, REASON_TEXT_4)
  */
 function transformCSV() {
   try {
-    // Input and output file paths
-    const inputFile = 'list_accounts_to_close.csv';
-    const outputFile = 'accounts_with_split_reasons.csv';
+    // Parse command line arguments
+    const { inputFile, outputFile } = parseCommandLineArgs();
     
     console.log(`Starting transformation process...`);
     console.log(`Reading input file: ${inputFile}`);
@@ -175,6 +222,7 @@ function transformCSV() {
       console.error(`ERROR: Input file '${inputFile}' not found in the current directory.`);
       console.log(`Current directory: ${process.cwd()}`);
       console.log(`Files in current directory: ${fs.readdirSync('.').join(', ')}`);
+      printUsage();
       return;
     }
     
@@ -290,7 +338,8 @@ function transformCSV() {
     
     // Print statistics
     console.log("\n--- TRANSFORMATION SUMMARY ---");
-    console.log(`Output saved to: ${outputFile}`);
+    console.log(`Input file: ${inputFile}`);
+    console.log(`Output file: ${outputFile}`);
     console.log(`Total rows: ${newData.length}`);
     console.log(`Rows with one reason: ${rowsWithOneReason}`);
     console.log(`Rows with multiple reasons: ${rowsWithMultipleReasons}`);
@@ -307,6 +356,7 @@ function transformCSV() {
   } catch (e) {
     console.error('ERROR: An unexpected error occurred during the transformation process.');
     console.error(e);
+    printUsage();
   }
 }
 
