@@ -31,14 +31,29 @@ npm install papaparse
 
 ## Usage
 
-1. Place your input CSV file (named `list_accounts_to_close.csv` by default) in the same directory as the script
-2. Run the script:
+Run the script with optional input and output file parameters:
 
+```bash
+node transform.js [options]
+```
+
+### Options
+
+- `-i, --input <file>`: Specify the input CSV file (default: `list_accounts_to_close.csv`)
+- `-o, --output <file>`: Specify the output CSV file (default: `accounts_with_split_reasons.csv`)
+- `-h, --help`: Display help information
+
+### Examples
+
+Basic usage with default filenames:
 ```bash
 node transform.js
 ```
 
-3. The transformed data will be saved as `accounts_with_split_reasons.csv` in the same directory
+Specifying custom input and output files:
+```bash
+node transform.js -i my_input.csv -o my_output.csv
+```
 
 ## Input Format
 
@@ -83,7 +98,7 @@ ECM_SEG,APPLICATION_ID,EXP_FICO,EXPERIANREPORTDATE,REASON_1,REASON_TEXT_1,REASON
 
 To customize the script for your own use case:
 
-- Change the input/output file names in the script
+- Change the default input/output file names in the script
 - Modify the reason code mappings to match your business needs
 - Adjust the number of reason columns (currently set to a maximum of 4)
 
